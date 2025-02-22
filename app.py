@@ -62,7 +62,7 @@ class VideoOverlay(QWidget):
             frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 4)).copy()
             
             # TEMPORARY
-            #frame = self.remove_middle_region(frame)
+            frame = self.remove_middle_region(frame)
             
             self.frame = frame
             self.update()
