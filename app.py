@@ -81,7 +81,6 @@ class VideoOverlay(QWidget):
         center_x, center_y = width // 2, height // 2
         half_size = region_size // 2
 
-        # Set alpha channel to 0 in the 30x30 center region
         frame[
             center_y - half_size : center_y + half_size,
             center_x - half_size : center_x + half_size,
@@ -90,6 +89,49 @@ class VideoOverlay(QWidget):
         return frame
 
 
+class CrosshairOverlay(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.enable_click_through()
+        self.showFullScreen()
+        self.crosshair = None
+        self.offset = 0
+
+    def enable_click_through(self):
+        hwnd = self.winId().__int__()
+        WS_EX_LAYERED = 0x00080000
+        WS_EX_TRANSPARENT = 0x00000020
+        current_style = windll.user32.GetWindowLongW(hwnd, -20)
+        windll.user32.SetWindowLongW(hwnd, -20, current_style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+
+    def set_crosshair(self, path):
+        self.crosshair = QPixmap(path)
+        self.update()
+
+    def set_offset(self, offset):
+        self.offset = offset
+        self.update()
+
+    def paintEvent(self, event):
+        if self.crosshair is not None:
+            painter = QPainter(self)
+            scaled_crosshair = self.crosshair.scaled(
+                self.crosshair.width(), 
+                self.crosshair.height(), 
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            crosshair_width = scaled_crosshair.width()
+            crosshair_height = scaled_crosshair.height()
+
+            x = (self.width() - crosshair_width) // 2
+            y = (self.height() - crosshair_height) // 2 - self.offset
+
+            painter.drawPixmap(x, y, scaled_crosshair)
+
 
 
 class ValorantThemeApp(QWidget):
@@ -97,13 +139,16 @@ class ValorantThemeApp(QWidget):
         super().__init__()
         self.video_overlay = VideoOverlay()
         self.video_overlay.hide()
+        self.crosshair_overlay = CrosshairOverlay()
+        self.crosshair_overlay.hide()
         self.theme = None
         self.init_ui()
 
     def openCrosshairFileDialog(self):
         fileName, _ = QFileDialog.getOpenFileName(self, "Select Crosshair File", "", "All Files (*);;Text Files (*.txt)")
         if fileName:
-            print("Selected file:", fileName)
+            self.crosshair_overlay.set_crosshair(fileName)
+            self.crosshair_overlay.show()
             self.checkBox_crosshair_enabled.setChecked(True)
 
     def openThemeFileDialog(self):
@@ -127,6 +172,12 @@ class ValorantThemeApp(QWidget):
     def stop_theme_video(self):
         self.video_overlay.stop_video()
         self.video_overlay.hide()
+        
+    def toggle_crosshair(self, state):
+        if state == Qt.Checked and self.crosshair_overlay.crosshair is not None:
+            self.crosshair_overlay.show()
+        else:
+            self.crosshair_overlay.hide()
 
     def init_ui(self):
         self.setWindowTitle('♡ Val UI ♡')
@@ -157,8 +208,9 @@ class ValorantThemeApp(QWidget):
         btn_import_cross_hair.setFixedSize(160, 35)
         btn_import_cross_hair.clicked.connect(self.openCrosshairFileDialog)
 
-        checkBox_crosshair_enabled = QCheckBox('Enabled')
-        checkBox_crosshair_enabled.setStyleSheet(f"{font_style} color: {self.primary_color};")
+        self.checkBox_crosshair_enabled = QCheckBox('Enabled')
+        self.checkBox_crosshair_enabled.setStyleSheet(f"{font_style} color: {self.primary_color};")
+        self.checkBox_crosshair_enabled.stateChanged.connect(self.toggle_crosshair)
 
         slider = QSlider(Qt.Vertical)
         slider.setMinimum(-30)
@@ -206,7 +258,8 @@ class ValorantThemeApp(QWidget):
         label_offset.setStyleSheet(f"{font_style} color: {self.secondary_color};")
         label_slider_value = QLabel('0')
         label_slider_value.setStyleSheet(f"{font_style} color: {self.secondary_color};")
-        slider.valueChanged.connect(lambda value: label_slider_value.setText(str(value)))
+        slider.valueChanged.connect(lambda value: (label_slider_value.setText(str(value)), self.crosshair_overlay.set_offset(value)))
+
 
         hbox_slider = QHBoxLayout()
         hbox_slider.addWidget(label_offset, 0, Qt.AlignCenter)
@@ -228,7 +281,7 @@ class ValorantThemeApp(QWidget):
 
         vbox1 = QVBoxLayout()
         vbox1.addWidget(btn_import_cross_hair, 0, Qt.AlignCenter)
-        vbox1.addWidget(checkBox_crosshair_enabled, 0, Qt.AlignCenter)
+        vbox1.addWidget(self.checkBox_crosshair_enabled, 0, Qt.AlignCenter)
         vbox1.addLayout(hbox_slider)
         vbox1.setSpacing(30)
         vbox1.addStretch(1)
